@@ -2,6 +2,10 @@
 
 A full-stack web application for managing departments and faculty members in an educational institution.
 
+
+<img src="./assets/screenshot.png" width="400"/>
+
+
 ## Features
 
 - **Department Management**: Create, read, update, and delete departments
