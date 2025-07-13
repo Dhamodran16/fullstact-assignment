@@ -3,7 +3,7 @@
 A full-stack web application for managing departments and faculty members in an educational institution.
 
 
-<img src="Screenshot 2025-07-13 075821.png" width="400"/>
+<img src="Screenshot 2025-07-13 075821.png" width="400px"/>
 
 
 ## Features
