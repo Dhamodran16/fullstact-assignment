@@ -3,9 +3,12 @@ import Navbar from './components/Navbar';
 import SearchBar from './components/SearchBar';
 import DepartmentTable from './components/DepartmentTable';
 import FacultyTable from './components/FacultyTable';
+import RealTimeNotification from './components/RealTimeNotification';
+import ConnectionStatus from './components/ConnectionStatus';
 import { departmentAPI, facultyAPI } from './services/api';
 import type { Department, Faculty } from './services/api';
 import { validateDepartment, validateFaculty, getFieldError, type ValidationError } from './utils/validation';
+import { socketService } from './services/socket';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'departments' | 'faculty'>('departments');
@@ -16,6 +19,12 @@ const App: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Real-time notification state
+  const [notification, setNotification] = useState<{
+    message: string;
+    type: 'success' | 'info' | 'warning';
+  } | null>(null);
 
   // State for data from API
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -32,6 +41,93 @@ const App: React.FC = () => {
   useEffect(() => {
     loadDepartments();
     loadFaculty();
+  }, []);
+
+  // Socket.IO real-time updates
+  useEffect(() => {
+    // Connect to socket
+    socketService.connect();
+
+    // Department event listeners
+    const handleDepartmentCreated = (department: Department) => {
+      setDepartments(prev => [department, ...prev]);
+      setNotification({
+        message: `Department "${department.name}" created successfully`,
+        type: 'success'
+      });
+    };
+
+    const handleDepartmentUpdated = (updatedDepartment: Department) => {
+      setDepartments(prev => 
+        prev.map(dept => dept._id === updatedDepartment._id ? updatedDepartment : dept)
+      );
+      setNotification({
+        message: `Department "${updatedDepartment.name}" updated successfully`,
+        type: 'info'
+      });
+    };
+
+    const handleDepartmentDeleted = (data: { id: string; name: string }) => {
+      setDepartments(prev => prev.filter(dept => dept._id !== data.id));
+      // Reload faculty to reflect deletion of related faculty members
+      loadFaculty();
+      setNotification({
+        message: `Department "${data.name}" deleted successfully`,
+        type: 'warning'
+      });
+    };
+
+    // Faculty event listeners
+    const handleFacultyCreated = (faculty: Faculty) => {
+      setFaculty(prev => [faculty, ...prev]);
+      // Reload departments to update faculty counts
+      loadDepartments();
+      setNotification({
+        message: `Faculty member "${faculty.name}" added to ${faculty.department}`,
+        type: 'success'
+      });
+    };
+
+    const handleFacultyUpdated = (updatedFaculty: Faculty) => {
+      setFaculty(prev => 
+        prev.map(fac => fac._id === updatedFaculty._id ? updatedFaculty : fac)
+      );
+      // Reload departments to update faculty counts
+      loadDepartments();
+      setNotification({
+        message: `Faculty member "${updatedFaculty.name}" updated successfully`,
+        type: 'info'
+      });
+    };
+
+    const handleFacultyDeleted = (data: { id: string; department: string }) => {
+      setFaculty(prev => prev.filter(fac => fac._id !== data.id));
+      // Reload departments to update faculty counts
+      loadDepartments();
+      setNotification({
+        message: `Faculty member removed from ${data.department}`,
+        type: 'warning'
+      });
+    };
+
+    // Register event listeners
+    socketService.on('departmentCreated', handleDepartmentCreated);
+    socketService.on('departmentUpdated', handleDepartmentUpdated);
+    socketService.on('departmentDeleted', handleDepartmentDeleted);
+    socketService.on('facultyCreated', handleFacultyCreated);
+    socketService.on('facultyUpdated', handleFacultyUpdated);
+    socketService.on('facultyDeleted', handleFacultyDeleted);
+
+    // Cleanup function
+    return () => {
+      socketService.off('departmentCreated', handleDepartmentCreated);
+      socketService.off('departmentUpdated', handleDepartmentUpdated);
+      socketService.off('departmentDeleted', handleDepartmentDeleted);
+      socketService.off('facultyCreated', handleFacultyCreated);
+      socketService.off('facultyUpdated', handleFacultyUpdated);
+      socketService.off('facultyDeleted', handleFacultyDeleted);
+      socketService.disconnect();
+    };
   }, []);
 
   const loadDepartments = async () => {
@@ -74,13 +170,11 @@ const App: React.FC = () => {
     try {
       setLoading(true);
       if (editingDepartment) {
-        const updated = await departmentAPI.update(editingDepartment._id, departmentForm);
-        setDepartments(departments.map(dept => 
-          dept._id === editingDepartment._id ? updated : dept
-        ));
+        await departmentAPI.update(editingDepartment._id, departmentForm);
+        // Real-time update will be handled by socket
       } else {
-        const newDepartment = await departmentAPI.create(departmentForm);
-        setDepartments([newDepartment, ...departments]);
+        await departmentAPI.create(departmentForm);
+        // Real-time update will be handled by socket
       }
       setShowDepartmentForm(false);
       setEditingDepartment(null);
@@ -108,13 +202,11 @@ const App: React.FC = () => {
     try {
       setLoading(true);
       if (editingFaculty) {
-        const updated = await facultyAPI.update(editingFaculty._id, facultyForm);
-        setFaculty(faculty.map(fac => 
-          fac._id === editingFaculty._id ? updated : fac
-        ));
+        await facultyAPI.update(editingFaculty._id, facultyForm);
+        // Real-time update will be handled by socket
       } else {
-        const newFaculty = await facultyAPI.create(facultyForm);
-        setFaculty([newFaculty, ...faculty]);
+        await facultyAPI.create(facultyForm);
+        // Real-time update will be handled by socket
       }
       setShowFacultyForm(false);
       setEditingFaculty(null);
@@ -147,9 +239,7 @@ const App: React.FC = () => {
       try {
         setLoading(true);
         await departmentAPI.delete(id);
-        setDepartments(departments.filter(dept => dept._id !== id));
-        // Reload faculty data to reflect the deletion of related faculty members
-        await loadFaculty();
+        // Real-time update will be handled by socket
       } catch (err) {
         setError('Failed to delete department');
         console.error(err);
@@ -164,7 +254,7 @@ const App: React.FC = () => {
       try {
         setLoading(true);
         await facultyAPI.delete(id);
-        setFaculty(faculty.filter(fac => fac._id !== id));
+        // Real-time update will be handled by socket
       } catch (err) {
         setError('Failed to delete faculty member');
         console.error(err);
@@ -201,6 +291,18 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
+
+      {/* Real-time Notification */}
+      {notification && (
+        <RealTimeNotification
+          message={notification.message}
+          type={notification.type}
+          onClose={() => setNotification(null)}
+        />
+      )}
+
+      {/* Connection Status */}
+      <ConnectionStatus />
 
       {/* Error Message */}
       {error && (

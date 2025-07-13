@@ -5,10 +5,18 @@ const Faculty = require('../models/Faculty');
 const updateFacultyCount = async (departmentName) => {
   try {
     const count = await Faculty.countDocuments({ department: departmentName });
-    await Department.findOneAndUpdate(
+    const updatedDepartment = await Department.findOneAndUpdate(
       { name: departmentName },
-      { facultyCount: count }
+      { facultyCount: count },
+      { new: true }
     );
+    
+    // Emit real-time update
+    if (global.io && updatedDepartment) {
+      global.io.emit('departmentUpdated', updatedDepartment);
+    }
+    
+    return updatedDepartment;
   } catch (error) {
     console.error('Error updating faculty count:', error);
   }
@@ -42,6 +50,12 @@ const createDepartment = async (req, res) => {
   try {
     const department = new Department(req.body);
     const savedDepartment = await department.save();
+    
+    // Emit real-time update
+    if (global.io) {
+      global.io.emit('departmentCreated', savedDepartment);
+    }
+    
     res.status(201).json(savedDepartment);
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -71,6 +85,11 @@ const updateDepartment = async (req, res) => {
       await updateFacultyCount(department.name);
     }
 
+    // Emit real-time update
+    if (global.io) {
+      global.io.emit('departmentUpdated', department);
+    }
+
     res.json(department);
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -86,6 +105,12 @@ const deleteDepartment = async (req, res) => {
     }
     // Delete all faculties related to this department
     await Faculty.deleteMany({ department: department.name });
+    
+    // Emit real-time update
+    if (global.io) {
+      global.io.emit('departmentDeleted', { id: req.params.id, name: department.name });
+    }
+    
     res.json({ message: 'Department and related faculties deleted successfully' });
   } catch (error) {
     res.status(500).json({ message: error.message });

@@ -33,6 +33,11 @@ const createFaculty = async (req, res) => {
     // Update faculty count for the department
     await updateFacultyCount(req.body.department);
     
+    // Emit real-time update
+    if (global.io) {
+      global.io.emit('facultyCreated', savedFaculty);
+    }
+    
     res.status(201).json(savedFaculty);
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -59,6 +64,11 @@ const updateFaculty = async (req, res) => {
       await updateFacultyCount(req.body.department);
     }
 
+    // Emit real-time update
+    if (global.io) {
+      global.io.emit('facultyUpdated', faculty);
+    }
+
     res.json(faculty);
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -75,6 +85,11 @@ const deleteFaculty = async (req, res) => {
     
     // Update faculty count for the department
     await updateFacultyCount(faculty.department);
+    
+    // Emit real-time update
+    if (global.io) {
+      global.io.emit('facultyDeleted', { id: req.params.id, department: faculty.department });
+    }
     
     res.json({ message: 'Faculty member deleted successfully' });
   } catch (error) {

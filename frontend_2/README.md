@@ -162,5 +162,3 @@ npm start
   status: String (enum: ['Active', 'Inactive']),
   createdAt: Date,
   updatedAt: Date
-}
-```
